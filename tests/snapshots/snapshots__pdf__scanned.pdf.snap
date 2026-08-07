@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: output
+---
+ERROR: unsupported input: PDF has no extractable text (Scanned, 1 pages): OCR is required

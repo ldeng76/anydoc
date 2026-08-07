@@ -15,6 +15,7 @@ mod render;
 mod shared;
 
 pub use error::ConvertError;
+pub use formats::pdf::{inspect_pdf, inspect_pdf_bytes, PdfInspection, PdfOcrPage, PdfType};
 
 use render::markdown::document_to_markdown;
 

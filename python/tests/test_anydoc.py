@@ -12,6 +12,8 @@ FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 OUTLINE = FIXTURES / "docx" / "handmade-outline.docx"
 RICH = FIXTURES / "docx" / "handmade-rich.docx"
 CSV = FIXTURES / "csv" / "sheet.csv"
+TEXT_PDF = FIXTURES / "pdf" / "text-only.pdf"
+SCANNED_PDF = FIXTURES / "pdf" / "scanned.pdf"
 ENCRYPTED = FIXTURES / "malformed" / "encrypted--errors.odt"
 ZIPBOMB = FIXTURES / "abuse" / "zipbomb--errors.docx"
 
@@ -56,6 +58,32 @@ class AnydocTest(unittest.TestCase):
         self.assertEqual(anydoc.format_from_extension("xls"), "xlsx")
         self.assertEqual(anydoc.format_from_path("report.odt"), "odt")
         self.assertIsNone(anydoc.format_from_path("report.unknown"))
+
+    def test_inspect_pdf_reports_whether_ocr_is_needed(self):
+        text = anydoc.inspect_pdf(TEXT_PDF)
+        self.assertIsNotNone(text)
+        self.assertFalse(text.needs_ocr)
+        self.assertEqual(text.pdf_type, "textBased")
+        self.assertEqual(text.pages_needing_ocr, [])
+        self.assertEqual(text.ocr_reasons, [])
+        self.assertGreaterEqual(text.page_count, 1)
+        self.assertTrue(0.0 <= text.confidence <= 1.0)
+
+        scanned = anydoc.inspect_pdf(SCANNED_PDF)
+        self.assertTrue(scanned.needs_ocr)
+        self.assertEqual(scanned.pdf_type, "scanned")
+        self.assertEqual(scanned.page_count, 1)
+        self.assertEqual(scanned.pages_needing_ocr, [1])
+        self.assertEqual(scanned.ocr_reasons[0].page, 1)
+        self.assertIn("scanned", scanned.ocr_reasons[0].reasons)
+
+    def test_inspect_pdf_bytes_returns_none_for_non_pdfs_and_raises_for_corrupt(self):
+        # A non-PDF file resolves to None rather than raising.
+        self.assertIsNone(anydoc.inspect_pdf(OUTLINE))
+        self.assertIsNone(anydoc.inspect_pdf_bytes(b"not a pdf"))
+        self.assertIsNone(anydoc.inspect_pdf_bytes(CSV.read_bytes()))
+        with self.assertRaises(anydoc.MalformedError):
+            anydoc.inspect_pdf_bytes(b"%PDF-1.7\nthis is not a valid pdf body at all")
 
     def test_conversion_errors_raise_the_subclass_that_names_the_failure(self):
         with self.assertRaises(anydoc.MalformedError) as caught:

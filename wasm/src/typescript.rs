@@ -219,4 +219,41 @@ export interface Asset {
   originPart: string
   data: Uint8Array
 }
+
+export type PdfType = 'textBased' | 'scanned' | 'imageBased' | 'mixed'
+
+/**
+ * Detection-only result for a PDF: whether OCR is recommended, which pages
+ * need it, why, and how confident the classification is. Produced without
+ * text extraction, so it is cheap enough to call before converting.
+ */
+export interface PdfInspection {
+  /**
+   * The routing signal: `true` when OCR is recommended. This is broader
+   * than `pagesNeedingOcr`: whole-document heuristics (newspaper layouts,
+   * template images) can recommend OCR even when no page is flagged.
+   */
+  needsOcr: boolean
+  /** The document-level classification. */
+  pdfType: PdfType
+  /** Total number of pages in the document. */
+  pageCount: number
+  /** 1-indexed pages that need OCR. */
+  pagesNeedingOcr: Array<number>
+  /** Per-page reasons for every page in `pagesNeedingOcr`. */
+  ocrReasons: Array<PdfOcrPage>
+  /** Detection confidence, 0.0 to 1.0. */
+  confidence: number
+}
+
+/** One page that needs OCR, and why. */
+export interface PdfOcrPage {
+  /** 1-indexed page number. */
+  page: number
+  /**
+   * Machine-readable reason codes: `scanned`, `no_text`, `vector_text`, or
+   * `suspected_garbled_text`.
+   */
+  reasons: Array<string>
+}
 "#;

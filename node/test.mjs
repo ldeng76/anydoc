@@ -12,6 +12,8 @@ import {
   formatFromBytes,
   formatFromExtension,
   formatFromPath,
+  inspectPdf,
+  inspectPdfBytes,
   toDocument,
   toMarkdown,
   toMarkdownBytes,
@@ -22,6 +24,8 @@ const fixture = (name) => fileURLToPath(new URL(`../tests/fixtures/${name}`, imp
 const OUTLINE = fixture('docx/handmade-outline.docx')
 const RICH = fixture('docx/handmade-rich.docx')
 const CSV = fixture('csv/sheet.csv')
+const TEXT_PDF = fixture('pdf/text-only.pdf')
+const SCANNED_PDF = fixture('pdf/scanned.pdf')
 const ENCRYPTED = fixture('malformed/encrypted--errors.odt')
 
 test('toMarkdown detects the format from the file content', async () => {
@@ -67,6 +71,35 @@ test('format detection reads content, extension, and path', async () => {
   assert.equal(formatFromExtension('xls'), 'xlsx')
   assert.equal(formatFromPath('/tmp/report.odt'), 'odt')
   assert.equal(formatFromPath('/tmp/report.unknown'), null)
+})
+
+test('inspectPdf reports whether OCR is needed', async () => {
+  const text = await inspectPdf(TEXT_PDF)
+  assert.equal(text.needsOcr, false)
+  assert.equal(text.pdfType, 'textBased')
+  assert.deepEqual(text.pagesNeedingOcr, [])
+  assert.deepEqual(text.ocrReasons, [])
+  assert.ok(text.confidence >= 0 && text.confidence <= 1)
+
+  const scanned = await inspectPdf(SCANNED_PDF)
+  assert.equal(scanned.needsOcr, true)
+  assert.equal(scanned.pdfType, 'scanned')
+  assert.equal(scanned.pageCount, 1)
+  assert.deepEqual(scanned.pagesNeedingOcr, [1])
+  assert.equal(scanned.ocrReasons[0].page, 1)
+  assert.ok(scanned.ocrReasons[0].reasons.includes('scanned'))
+})
+
+test('inspectPdfBytes returns null for non-PDFs and rejects for corrupt PDFs', async () => {
+  assert.equal(await inspectPdfBytes(Buffer.from('not a pdf')), null)
+  assert.equal(await inspectPdfBytes(await readFile(CSV)), null)
+  await assert.rejects(
+    inspectPdfBytes(Buffer.from('%PDF-1.7\nthis is not a valid pdf body at all')),
+    (error) => {
+      assert.equal(error.code, 'malformed')
+      return true
+    },
+  )
 })
 
 // `code` is what callers branch on, so every kind of failure is pinned here.

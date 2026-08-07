@@ -19,6 +19,7 @@ import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,73 @@ DOT_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
     "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
+
+
+def assemble_pdf(objects):
+    """Wrap `objects` in a minimal classic-xref PDF (1 0 obj ... n 0 obj)."""
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for i, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    xref_pos = len(pdf)
+    pdf += b"xref\n0 %d\n" % (len(objects) + 1)
+    pdf += b"0000000000 65535 f \n"
+    for off in offsets[1:]:
+        pdf += b"%010d 00000 n \n" % off
+    pdf += (
+        b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n"
+        % (len(objects) + 1, xref_pos)
+    )
+    return bytes(pdf)
+
+
+def write_scanned_pdf():
+    """Image-only PDF: one full-page RGB image, no text operators.
+
+    Built by hand (classic xref table, FlateDecode image) so the scanned
+    fixture needs no external producer. pdf-inspector classifies a page with
+    an image and zero text operators as `Scanned`.
+    """
+    width, height = 400, 300
+    rows = bytearray()
+    for y in range(height):
+        for x in range(width):
+            rows += bytes((x * 255 // width, y * 255 // height, 128))
+    image_data = zlib.compress(bytes(rows))
+    content = b"q 400 0 0 300 0 0 cm /Im0 Do Q\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] "
+        b"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>",
+        (b"<< /Type /XObject /Subtype /Image /Width 400 /Height 300 "
+         b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode "
+         b"/Length %d >>\nstream\n" % len(image_data))
+        + image_data
+        + b"\nendstream",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"endstream",
+    ]
+    return assemble_pdf(objects)
+
+
+def write_text_pdf():
+    """Minimal text-only PDF: one Helvetica string, no images.
+
+    Hand-built like `write_scanned_pdf` so the no-OCR baseline needs no
+    external producer. pdf-inspector classifies pages with Tj/TJ operators
+    and no images as `TextBased`.
+    """
+    content = b"BT /F1 12 Tf 72 720 Td (Hello, world) Tj ET\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"endstream",
+    ]
+    return assemble_pdf(objects)
 
 
 def run(cmd, **kw):
@@ -1890,6 +1958,8 @@ def main():
         convert_lo(text, "doc:MS Word 97", OUT / "doc", "text.doc")
         convert_lo(text, "rtf:Rich Text Format", OUT / "rtf", "text.rtf")
         convert_lo(text, "pdf:writer_pdf_Export", OUT / "pdf", "text.pdf")
+        (OUT / "pdf" / "scanned.pdf").write_bytes(write_scanned_pdf())
+        (OUT / "pdf" / "text-only.pdf").write_bytes(write_text_pdf())
         sheet = SRC / "sheet.fods"
         convert_lo(sheet, "ods", OUT / "ods", "sheet.ods")
         convert_lo(sheet, "xlsx:Calc MS Excel 2007 XML", OUT / "xlsx", "sheet.xlsx")

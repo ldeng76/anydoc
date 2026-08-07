@@ -6,6 +6,7 @@
 use wasm_bindgen::prelude::*;
 
 mod document;
+mod pdf;
 mod typescript;
 
 pub use document::*;
@@ -116,6 +117,20 @@ pub fn to_document(bytes: &[u8], format: Option<Format>) -> Result<JsValue, JsVa
         anydoc::to_document(bytes, format.map(anydoc::Format::from)).map_err(convert_error)?;
     serde_wasm_bindgen::to_value(&Document::from(document))
         .map_err(|error| js_sys::Error::new(&error.to_string()).into())
+}
+
+/// Inspect an in-memory PDF without extracting text: resolves to `null` when
+/// the bytes are not a PDF, the inspection when they are, and throws an
+/// `Error` carrying a `ConvertErrorCode` when they are a PDF that cannot be
+/// parsed.
+#[wasm_bindgen(js_name = inspectPdf, unchecked_return_type = "PdfInspection | null")]
+pub fn inspect_pdf(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let inspection = anydoc::inspect_pdf_bytes(bytes).map_err(convert_error)?;
+    match inspection {
+        Some(inspection) => serde_wasm_bindgen::to_value(&pdf::PdfInspection::from(inspection))
+            .map_err(|error| js_sys::Error::new(&error.to_string()).into()),
+        None => Ok(JsValue::NULL),
+    }
 }
 
 /// The thrown value: a JS `Error` carrying the crate's message, with the

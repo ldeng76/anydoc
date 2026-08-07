@@ -7,6 +7,7 @@ use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 
 mod document;
+mod pdf;
 
 create_exception!(
     anydoc,
@@ -182,12 +183,35 @@ fn to_document(
     document::document(py, parsed)
 }
 
+/// Inspect a PDF file without extracting text: returns `None` when the file
+/// is not a PDF, the inspection when it is, and raises the subclass that
+/// names the failure when it is a PDF that cannot be parsed.
+#[pyfunction]
+fn inspect_pdf(py: Python<'_>, path: PathBuf) -> PyResult<Option<pdf::PdfInspection>> {
+    let inspection =
+        py.detach(|| anydoc::inspect_pdf(&path)).map_err(|e| convert_error(py, e))?;
+    inspection.map(|i| pdf::inspection(py, i)).transpose()
+}
+
+/// Inspect an in-memory PDF without extracting text: returns `None` when the
+/// bytes are not a PDF, the inspection when they are, and raises the
+/// subclass that names the failure when they are a PDF that cannot be
+/// parsed.
+#[pyfunction]
+fn inspect_pdf_bytes(py: Python<'_>, data: Vec<u8>) -> PyResult<Option<pdf::PdfInspection>> {
+    let inspection =
+        py.detach(|| anydoc::inspect_pdf_bytes(&data)).map_err(|e| convert_error(py, e))?;
+    inspection.map(|i| pdf::inspection(py, i)).transpose()
+}
+
 /// Convert documents to GitHub-Flavored Markdown.
 #[pymodule]
 fn _anydoc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(format_from_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(format_from_extension, m)?)?;
     m.add_function(wrap_pyfunction!(format_from_path, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect_pdf, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect_pdf_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(to_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(to_markdown_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(to_document, m)?)?;
@@ -202,6 +226,8 @@ fn _anydoc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<document::List>()?;
     m.add_class::<document::ListItem>()?;
     m.add_class::<document::Note>()?;
+    m.add_class::<pdf::PdfInspection>()?;
+    m.add_class::<pdf::PdfOcrPage>()?;
     m.add_class::<document::Style>()?;
     m.add_class::<document::Table>()?;
     m.add("ConvertError", m.py().get_type::<ConvertError>())?;

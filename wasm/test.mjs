@@ -10,6 +10,7 @@ import {
   formatFromBytes,
   formatFromExtension,
   formatFromPath,
+  inspectPdf,
   toDocument,
   toMarkdownBytes,
 } from './pkg/anydoc_wasm.js'
@@ -22,6 +23,8 @@ const OUTLINE = await readFile(fixture('docx/handmade-outline.docx'))
 const RICH = await readFile(fixture('docx/handmade-rich.docx'))
 const CSV = await readFile(fixture('csv/sheet.csv'))
 const PDF = await readFile(fixture('pdf/text.pdf'))
+const TEXT_PDF = await readFile(fixture('pdf/text-only.pdf'))
+const SCANNED_PDF = await readFile(fixture('pdf/scanned.pdf'))
 const ENCRYPTED = await readFile(fixture('malformed/encrypted--errors.odt'))
 
 test('toMarkdownBytes converts in memory', () => {
@@ -39,6 +42,36 @@ test('toMarkdownBytes detects the format when none is named', () => {
 test('pdf converts to Markdown but has no document model', () => {
   assert.ok(toMarkdownBytes(PDF).length > 0)
   assert.throws(() => toDocument(PDF), /pdf/i)
+})
+
+test('inspectPdf reports whether OCR is needed', () => {
+  const text = inspectPdf(TEXT_PDF)
+  assert.equal(text.needsOcr, false)
+  assert.equal(text.pdfType, 'textBased')
+  assert.deepEqual(text.pagesNeedingOcr, [])
+  assert.deepEqual(text.ocrReasons, [])
+  assert.ok(text.confidence >= 0 && text.confidence <= 1)
+
+  const scanned = inspectPdf(SCANNED_PDF)
+  assert.equal(scanned.needsOcr, true)
+  assert.equal(scanned.pdfType, 'scanned')
+  assert.equal(scanned.pageCount, 1)
+  assert.deepEqual(scanned.pagesNeedingOcr, [1])
+  assert.equal(scanned.ocrReasons[0].page, 1)
+  assert.ok(scanned.ocrReasons[0].reasons.includes('scanned'))
+})
+
+test('inspectPdf returns null for non-PDFs and throws for corrupt PDFs', () => {
+  assert.equal(inspectPdf(new TextEncoder().encode('not a pdf')), null)
+  assert.equal(inspectPdf(CSV), null)
+  assert.throws(
+    () => inspectPdf(new TextEncoder().encode('%PDF-1.7\nthis is not a valid pdf body at all')),
+    (error) => {
+      assert.ok(error instanceof Error)
+      assert.equal(error.code, 'malformed')
+      return true
+    },
+  )
 })
 
 test('toDocument exposes the document model', () => {

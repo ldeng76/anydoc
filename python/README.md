@@ -42,6 +42,9 @@ markdown = anydoc.to_markdown_bytes(data, "csv")
 
 # Or stop at the document model, which also carries embedded assets:
 document = anydoc.to_document(data)
+
+# Or check a PDF for OCR needs before converting:
+inspection = anydoc.inspect_pdf("scan.pdf")
 ```
 
 ## Errors
@@ -77,6 +80,29 @@ anydoc.format_from_bytes(data)  # 'docx', or None when nothing matches
 anydoc.format_from_extension(".pptm")  # 'pptx'
 anydoc.format_from_path("report.odt")  # 'odt'
 ```
+
+## PDF OCR pre-check
+
+`inspect_pdf` / `inspect_pdf_bytes` run pdf-inspector's detector only,
+without text extraction, so they are cheap enough to route on. They return
+`None` for bytes that are not a PDF and raise the error subclass that names
+the failure for a PDF that cannot be parsed.
+
+```python
+inspection = anydoc.inspect_pdf("scan.pdf")
+if inspection is not None and inspection.needs_ocr:
+    # Route the scanned/image pages to an OCR service; anydoc does not OCR.
+    return route_to_ocr(data, inspection.pages_needing_ocr)
+markdown = anydoc.to_markdown("scan.pdf")
+```
+
+`PdfInspection` carries `needs_ocr`, `pdf_type` (`"textBased"`, `"scanned"`,
+`"imageBased"`, `"mixed"`), `page_count`, 1-indexed `pages_needing_ocr`,
+per-page `ocr_reasons` (`scanned`, `no_text`, `vector_text`,
+`suspected_garbled_text`), and `confidence`. `needs_ocr` is the routing
+signal: it can be `True` with an empty `pages_needing_ocr` (whole-document
+layouts like newspapers), and a mixed PDF can flag a subset of pages while
+the text pages convert directly.
 
 ## Images and embedded objects
 

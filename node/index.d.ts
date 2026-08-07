@@ -180,6 +180,20 @@ export declare const enum InlineKind {
   lineBreak = 'lineBreak'
 }
 
+/**
+ * Inspect a PDF file without extracting text: resolves to `null` when the
+ * file is not a PDF, the inspection when it is, and rejects with a
+ * `ConvertErrorCode` when it is a PDF that cannot be parsed.
+ */
+export declare function inspectPdf(path: string): Promise<PdfInspection | null>
+
+/**
+ * Inspect an in-memory PDF without extracting text: resolves to `null` when
+ * the bytes are not a PDF, the inspection when they are, and rejects with a
+ * `ConvertErrorCode` when they are a PDF that cannot be parsed.
+ */
+export declare function inspectPdfBytes(bytes: Uint8Array): Promise<PdfInspection | null>
+
 export interface LinkTarget {
   kind: LinkTargetKind
   /** The URL, relative reference, or anchor id. */
@@ -233,6 +247,49 @@ export interface Note {
 export declare const enum NoteKind {
   footnote = 'footnote',
   endnote = 'endnote'
+}
+
+/**
+ * Detection-only result for a PDF: whether OCR is recommended, which pages
+ * need it, why, and how confident the classification is. Produced without
+ * text extraction, so it is cheap enough to call before converting.
+ */
+export interface PdfInspection {
+  /**
+   * The routing signal: `true` when OCR is recommended. This is broader
+   * than `pagesNeedingOcr`: whole-document heuristics (newspaper layouts,
+   * template images) can recommend OCR even when no page is flagged.
+   */
+  needsOcr: boolean
+  /** The document-level classification. */
+  pdfType: PdfType
+  /** Total number of pages in the document. */
+  pageCount: number
+  /** 1-indexed pages that need OCR. */
+  pagesNeedingOcr: Array<number>
+  /** Per-page reasons for every page in `pagesNeedingOcr`. */
+  ocrReasons: Array<PdfOcrPage>
+  /** Detection confidence, 0.0 to 1.0. */
+  confidence: number
+}
+
+/** One page that needs OCR, and why. `page` is 1-indexed. */
+export interface PdfOcrPage {
+  /** 1-indexed page number. */
+  page: number
+  /**
+   * Machine-readable reason codes: `scanned`, `no_text`, `vector_text`,
+   * or `suspected_garbled_text`.
+   */
+  reasons: Array<string>
+}
+
+/** How pdf-inspector classified the document before extraction. */
+export declare const enum PdfType {
+  textBased = 'textBased',
+  scanned = 'scanned',
+  imageBased = 'imageBased',
+  mixed = 'mixed'
 }
 
 /** Fully resolved character style. */

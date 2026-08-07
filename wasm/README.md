@@ -11,6 +11,7 @@ npm install @firecrawl/anydoc-wasm
 ```js
 import init, {
   formatFromBytes,
+  inspectPdf,
   toMarkdownBytes,
   toDocument,
 } from '@firecrawl/anydoc-wasm';
@@ -28,6 +29,9 @@ const document = toDocument(bytes);
 
 // Format detection on its own:
 formatFromBytes(bytes); // 'docx', or undefined when nothing matches
+
+// Or check a PDF for OCR needs before converting:
+inspectPdf(pdfBytes); // { needsOcr, pdfType, ... } or null when not a PDF
 ```
 
 The package is built with `wasm-pack --target web`: it loads with a plain `<script type="module">` and with bundlers that handle the `new URL(..., import.meta.url)` asset pattern (Vite, webpack 5, Rollup). In Node, pass the module bytes to `initSync` instead of calling `init` (see [`test.mjs`](wasm/test.mjs)).
@@ -60,6 +64,29 @@ try {
 | `missingPart`   | A part required for any meaningful output is absent                 |
 
 `error.message` carries the detail, naming the package part at fault where the format identifies one. TypeScript gets the union as `ConvertErrorCode`. The crate's `io` code has no counterpart here: there is no filesystem to read from.
+
+## PDF OCR pre-check
+
+`inspectPdf` runs pdf-inspector's detector only, without text extraction, so
+it is cheap enough to route on. It returns `null` for bytes that are not a
+PDF and throws a coded error for a PDF that cannot be parsed.
+
+```js
+const inspection = inspectPdf(pdfBytes);
+if (inspection !== null && inspection.needsOcr) {
+  // Route the scanned/image pages to an OCR service; anydoc does not OCR.
+  return routeToOcr(pdfBytes, inspection.pagesNeedingOcr);
+}
+const markdown = toMarkdownBytes(pdfBytes);
+```
+
+`PdfInspection` carries `needsOcr`, `pdfType` (`'textBased' | 'scanned' |
+'imageBased' | 'mixed'`), `pageCount`, 1-indexed `pagesNeedingOcr`,
+per-page `ocrReasons` (`scanned`, `no_text`, `vector_text`,
+`suspected_garbled_text`), and `confidence`. `needsOcr` is the routing
+signal: it can be `true` with an empty `pagesNeedingOcr` (whole-document
+layouts like newspapers), and a mixed PDF can flag a subset of pages while
+the text pages convert directly.
 
 ## Building
 

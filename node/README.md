@@ -39,7 +39,7 @@ Markdown goes to stdout, errors to stderr, and `anydoc --help` covers the rest.
 ## Usage
 
 ```js
-import { toDocument, toMarkdown, toMarkdownBytes } from '@firecrawl/anydoc';
+import { inspectPdf, toDocument, toMarkdown, toMarkdownBytes } from '@firecrawl/anydoc';
 
 // From a file path:
 const markdown = await toMarkdown('report.docx');
@@ -52,6 +52,9 @@ const fromCsv = await toMarkdownBytes(bytes, 'csv');
 
 // Or stop at the document model, which also carries embedded assets:
 const document = await toDocument(bytes);
+
+// Or check a PDF for OCR needs before converting:
+const inspection = await inspectPdf('scan.pdf');
 ```
 
 ## Errors
@@ -91,6 +94,30 @@ formatFromBytes(bytes); // 'docx', or null when nothing matches
 formatFromExtension('.pptm'); // 'pptx'
 formatFromPath('report.odt'); // 'odt'
 ```
+
+## PDF OCR pre-check
+
+`inspectPdf` / `inspectPdfBytes` run pdf-inspector's detector only, without
+text extraction, so they are cheap enough to route on. They resolve to `null`
+for bytes that are not a PDF and reject with a coded error for a PDF that
+cannot be parsed.
+
+```js
+const inspection = await inspectPdf('scan.pdf');
+if (inspection !== null && inspection.needsOcr) {
+  // Route the scanned/image pages to an OCR service; anydoc does not OCR.
+  return routeToOcr(bytes, inspection.pagesNeedingOcr);
+}
+const markdown = await toMarkdown('scan.pdf');
+```
+
+`PdfInspection` carries `needsOcr`, `pdfType` (`'textBased' | 'scanned' |
+'imageBased' | 'mixed'`), `pageCount`, 1-indexed `pagesNeedingOcr`,
+per-page `ocrReasons` (`scanned`, `no_text`, `vector_text`,
+`suspected_garbled_text`), and `confidence`. `needsOcr` is the routing
+signal: it can be `true` with an empty `pagesNeedingOcr` (whole-document
+layouts like newspapers), and a mixed PDF can flag a subset of pages while
+the text pages convert directly.
 
 ## Images and embedded objects
 

@@ -53,6 +53,17 @@ def format_from_extension(extension: str) -> Format | None:
 def format_from_path(path: str | os.PathLike[str]) -> Format | None:
     """The format a path's extension names."""
 
+def inspect_pdf(path: str | os.PathLike[str]) -> PdfInspection | None:
+    """Inspect a PDF file without extracting text: `None` when the file is
+    not a PDF, the inspection when it is, and raises the subclass that names
+    the failure when it is a PDF that cannot be parsed."""
+
+def inspect_pdf_bytes(data: bytes | bytearray) -> PdfInspection | None:
+    """Inspect an in-memory PDF without extracting text: `None` when the
+    bytes are not a PDF, the inspection when they are, and raises the
+    subclass that names the failure when they are a PDF that cannot be
+    parsed."""
+
 def to_markdown(path: str | os.PathLike[str]) -> str:
     """Convert a document file to Markdown. The format is detected from the
     file content; the extension is the fallback for signature-less formats
@@ -70,6 +81,36 @@ def to_document(data: bytes | bytearray, format: Format | None = None) -> Docume
 
     Unsupported for `pdf`: PDF conversion produces Markdown directly and has
     no document-model form; use `to_markdown_bytes`."""
+
+@final
+class PdfInspection:
+    """Detection-only result for a PDF: whether OCR is recommended, which
+    pages need it, why, and how confident the classification is."""
+
+    needs_ocr: bool
+    """The routing signal: `True` when OCR is recommended. This is broader
+    than `pages_needing_ocr`: whole-document heuristics (newspaper layouts,
+    template images) can recommend OCR even when no page is flagged."""
+    pdf_type: Literal["textBased", "scanned", "imageBased", "mixed"]
+    """The document-level classification."""
+    page_count: int
+    """Total number of pages in the document."""
+    pages_needing_ocr: list[int]
+    """1-indexed pages that need OCR."""
+    ocr_reasons: list[PdfOcrPage]
+    """Per-page reasons for every page in `pages_needing_ocr`."""
+    confidence: float
+    """Detection confidence, 0.0 to 1.0."""
+
+@final
+class PdfOcrPage:
+    """One page that needs OCR, and why."""
+
+    page: int
+    """1-indexed page number."""
+    reasons: list[str]
+    """Machine-readable reason codes: `scanned`, `no_text`, `vector_text`,
+    or `suspected_garbled_text`."""
 
 @final
 class Document:

@@ -133,7 +133,7 @@ let document = anydoc::to_document(&bytes, None)?;
 - **Content-based format detection.** The format is read from the bytes themselves (PDF header, RTF open group, OLE stream names, ZIP package mimetype), so mislabeled files still convert correctly.
 - **Fast.** Pure Rust, no ML models, no external services. Median conversion time is under 5ms per document.
 - **Bindings that stay out of the way.** Node.js conversion runs on the libuv thread pool and never blocks the event loop; Python releases the GIL so other threads keep running. TypeScript types and Python stubs ship with the packages.
-- **PDF support built in.** Text-based PDFs convert locally through [pdf-inspector](https://github.com/firecrawl/pdf-inspector), no OCR service required.
+- **PDF support built in.** Text-based PDFs convert locally through [pdf-inspector](https://github.com/firecrawl/pdf-inspector), no OCR service required. `inspect_pdf` reports up front whether OCR is needed and which pages.
 - **Agent ready.** Ships as an [Agent Skill](#agent-skill): one `npx skills add firecrawl/anydoc` and any agent can read office documents.
 
 ## Supported formats
@@ -225,6 +225,34 @@ match anydoc::to_markdown(path) {
 | `Io`            | The file could not be read, from `to_markdown` only                 |
 
 Node and wasm publish the variant name on `error.code`; Python raises one `anydoc.ConvertError` subclass per variant, or `OSError` when the file cannot be read.
+
+## PDF OCR pre-check
+
+Before converting, `inspect_pdf` (or `inspect_pdf_bytes`) runs pdf-inspector's
+detector only, without text extraction, so it is cheap enough to route on.
+Bytes that are not a PDF return `None`, matching `Format::from_bytes`; a PDF
+that cannot be parsed returns a typed error.
+
+```rust
+let Some(inspection) = anydoc::inspect_pdf(&bytes)? else {
+    return Ok(None); // not a PDF
+};
+if inspection.needs_ocr {
+    // Route the scanned/image pages to an OCR service; anydoc does not OCR.
+    return handle_with_ocr(bytes, &inspection);
+}
+let markdown = anydoc::to_markdown_bytes(&bytes, anydoc::Format::Pdf)?;
+```
+
+`PdfInspection` carries `needs_ocr`, `pdf_type` (`TextBased`, `Scanned`,
+`ImageBased`, `Mixed`), `page_count`, 1-indexed `pages_needing_ocr`,
+per-page `ocr_reasons` (`scanned`, `no_text`, `vector_text`,
+`suspected_garbled_text`), and `confidence`. `needs_ocr` is the routing
+signal: it can be `true` while `pages_needing_ocr` is empty (pdf-inspector
+recommends OCR for whole-document layouts like newspapers), and a mixed PDF
+can name a subset of pages while the text pages convert directly. The same
+API is exposed on the Node (`inspectPdf` / `inspectPdfBytes`), Python
+(`inspect_pdf` / `inspect_pdf_bytes`), and wasm (`inspectPdf`) bindings.
 
 ## How it works
 
